@@ -1,0 +1,79 @@
+name: 'Release MikuTV Plugin'
+description: 'Validate, deterministically package, and publish MikuTV plugins to GitHub Releases.'
+author: 'yuchanns'
+branding:
+  icon: 'package'
+  color: 'blue'
+
+inputs:
+  tag:
+    description: 'Tag to validate and publish (defaults to GITHUB_REF_NAME on tag push, or v<plugin.json version> otherwise)'
+    required: false
+    default: ''
+  dry-run:
+    description: 'Validate and package plugin.zip and SHA256SUMS.txt without publishing a GitHub Release'
+    required: false
+    default: 'false'
+  working-directory:
+    description: 'Plugin repository root directory containing plugin.json'
+    required: false
+    default: '.'
+  token:
+    description: 'GitHub token used to create or update the GitHub Release'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  tag:
+    description: 'Resolved release tag (v<version>)'
+    value: ${{ steps.pack.outputs.tag }}
+  version:
+    description: 'Plugin semantic version from plugin.json'
+    value: ${{ steps.pack.outputs.version }}
+  plugin-id:
+    description: 'Plugin identifier from plugin.json'
+    value: ${{ steps.pack.outputs.plugin-id }}
+  kind:
+    description: 'Plugin kind (source, theme, or locale)'
+    value: ${{ steps.pack.outputs.kind }}
+  sha256:
+    description: 'SHA-256 hex digest of plugin.zip'
+    value: ${{ steps.pack.outputs.sha256 }}
+  bytes:
+    description: 'Size of plugin.zip in bytes'
+    value: ${{ steps.pack.outputs.bytes }}
+  prerelease:
+    description: 'Whether the version is a SemVer prerelease (true or false)'
+    value: ${{ steps.pack.outputs.prerelease }}
+  zip-path:
+    description: 'Path to the packaged plugin.zip'
+    value: ${{ steps.pack.outputs.zip-path }}
+  checksums-path:
+    description: 'Path to the generated SHA256SUMS.txt'
+    value: ${{ steps.pack.outputs.checksums-path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate manifest and package plugin.zip
+      id: pack
+      shell: bash
+      env:
+        INPUT_TAG: ${{ inputs.tag }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        EVENT_NAME: ${{ github.event_name }}
+        REF_NAME: ${{ github.ref_name }}
+        REF_TYPE: ${{ github.ref_type }}
+      run: python3 "$GITHUB_ACTION_PATH/scripts/package.py"
+
+    - name: Publish GitHub Release
+      if: ${{ inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        TAG: ${{ steps.pack.outputs.tag }}
+        PRERELEASE: ${{ steps.pack.outputs.prerelease }}
+        ZIP_PATH: ${{ steps.pack.outputs.zip-path }}
+        CHECKSUMS_PATH: ${{ steps.pack.outputs.checksums-path }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/publish.sh"

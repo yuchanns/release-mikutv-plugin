@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run unit tests
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Prepare fixture plugin
+        run: |
+          mkdir -p /tmp/demo-plugin
+          cat <<'JSON' > /tmp/demo-plugin/plugin.json
+          {
+            "id": "demo-source",
+            "name": "Demo Source",
+            "kind": "source",
+            "version": "1.0.0",
+            "apiVersion": 1,
+            "license": "Apache-2.0",
+            "main": "index.js"
+          }
+          JSON
+          printf 'Apache-2.0\n' > /tmp/demo-plugin/LICENSE
+          printf 'export function browse() { return {}; }\n' > /tmp/demo-plugin/index.js
+
+      - name: Smoke test composite action (dry-run)
+        id: release
+        uses: ./
+        with:
+          working-directory: /tmp/demo-plugin
+          dry-run: 'true'
+
+      - name: Verify action outputs and artifacts
+        run: |
+          test "${{ steps.release.outputs.tag }}" = "v1.0.0"
+          test "${{ steps.release.outputs.plugin-id }}" = "demo-source"
+          test "${{ steps.release.outputs.kind }}" = "source"
+          test "${{ steps.release.outputs.prerelease }}" = "false"
+          test -f "${{ steps.release.outputs.zip-path }}"
+          test -f "${{ steps.release.outputs.checksums-path }}"
+          (cd /tmp/demo-plugin && sha256sum -c SHA256SUMS.txt)
